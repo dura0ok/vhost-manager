@@ -4,123 +4,126 @@ import (
 	"bufio"
 	"errors"
 	"fmt"
-	"github.com/lextoumbourou/goodhosts"
 	"io/ioutil"
 	"log"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
+
+	"github.com/lextoumbourou/goodhosts"
 )
-// FindHosts return slice with path to virtual hosts configs
+
+const (
+	pathApacheSitesAvailable = "/etc/apache2/sites-available/"
+	pathVarWWW               = "/var/www/"
+	pathInitdApache2         = "/etc/init.d/apache2"
+	defaultApacheConf        = "000-default.conf"
+	defaultApacheSSLConf     = "default-ssl.conf"
+	defaultTemplate          = "template.txt"
+	defaultLocalhostIPv4     = "127.0.0.1"
+)
+
+// findHosts returns the paths to virtual hosts configs
 func findHosts() ([]string, error) {
 	var files []string
-	root := "/etc/apache2/sites-available/"
-	err := filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
-		if info.IsDir() || info.Name() == "000-default.conf" || info.Name() == "default-ssl.conf" {
+	if err := filepath.Walk(
+		pathApacheSitesAvailable,
+		func(path string, info os.FileInfo, err error) error {
+			if info.IsDir() ||
+				info.Name() == defaultApacheConf ||
+				info.Name() == defaultApacheSSLConf {
+				return nil
+			}
+			files = append(files, path)
 			return nil
-		}
-		files = append(files, path)
-		return nil
-	})
-	if err != nil {
+		},
+	); err != nil {
 		return nil, err
 	}
 
 	return files, nil
 }
 
-// hostExists return bool if host already create, and error if programme cant run findHosts()
+// hostExists returns true if the host was already created
 func hostExists(name string) (bool, error) {
-	checkHost := "/etc/apache2/sites-available/" + name + ".conf"
+	if name == "" {
+		return false, errors.New("invalid host name (empty)")
+	}
+	path := pathApacheSitesAvailable + name + ".conf"
 	configs, err := findHosts()
 	if err != nil {
 		return false, err
 	}
-	_, found := Find(configs, checkHost)
-	return found, nil
+	return IndexOf(configs, path) >= 0, nil
 }
 
-// Find true if val in slice, use in hostExists
-func Find(slice []string, val string) (int, bool) {
+// IndexOf returns either the index of the value in the slice
+// or -1 if val isn't contained in the slice
+func IndexOf(slice []string, val string) int {
 	for i, item := range slice {
 		if item == val {
-			return i, true
+			return i
 		}
 	}
-	return -1, false
+	return -1
 }
-// createHost(function wrapper, which create host)
+
+// createHost creates a new host
 func createHost(name string) error {
 	check, err := hostExists(name)
 	if err != nil {
 		return err
 	}
 	if check {
-		return errors.New("this host already exist")
+		return fmt.Errorf("host %q already exists", name)
 	}
-	serverPath := "/var/www/" + strings.ReplaceAll(name, ".", "")
-	b, err := ioutil.ReadFile("template.txt")
+	serverPath := pathVarWWW + strings.ReplaceAll(name, ".", "")
+	b, err := ioutil.ReadFile(defaultTemplate)
 	if err != nil {
 		return err
 	}
-	var template = string(b)
+	template := string(b)
 	template = strings.ReplaceAll(template, "{{servername}}", name)
 	template = strings.ReplaceAll(template, "{{serverpath}}", serverPath)
 
-	pathToFile := "/etc/apache2/sites-available/" + name + ".conf"
+	pathToFile := pathApacheSitesAvailable + name + ".conf"
 	f, err := os.Create(pathToFile)
 	if err != nil {
 		return err
 	}
-	err = ioutil.WriteFile(pathToFile, []byte(template), 0644)
-	if err != nil {
+	defer f.Close()
+
+	if err = ioutil.WriteFile(pathToFile, []byte(template), 0644); err != nil {
 		return err
 	}
-	err = f.Close()
-	if err != nil {
-		return err
-	}
-	err = os.Mkdir(serverPath, 0777)
-	if err != nil {
+	if err = os.Mkdir(serverPath, 0777); err != nil {
 		return err
 	}
 
 	out, err := exec.Command("a2ensite", name).CombinedOutput()
 	if err != nil {
 		return err
-	} 
-		/*
-			f, err = os.OpenFile("/etc/hosts",
-				os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
-			if err != nil {
-				return err
-			}
+	}
 
-			if _, err := f.WriteString("127.0.0.1       " + name); err != nil {
-				log.Println(err)
-			}
+	hosts, err := goodhosts.NewHosts()
+	if err != nil {
+		return err
+	}
 
-			err = f.Close()
-			if err != nil {
-				return err
-			}
-		*/
-		hosts, _ := goodhosts.NewHosts()
-		if !hosts.Has("127.0.0.1", name) {
-			err = hosts.Add("127.0.0.1", name)
-			if err != nil {
-				return err
-			}
-
-			if err := hosts.Flush(); err != nil {
-				return err
-			}
+	if !hosts.Has(defaultLocalhostIPv4, name) {
+		if err = hosts.Add(defaultLocalhostIPv4, name); err != nil {
+			return err
 		}
-	
+
+		if err := hosts.Flush(); err != nil {
+			return err
+		}
+	}
+
 	fmt.Printf("%s", out)
 
-	out, err = exec.Command("/etc/init.d/apache2", "restart").CombinedOutput()
+	out, err = exec.Command(pathInitdApache2, "restart").CombinedOutput()
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -129,74 +132,78 @@ func createHost(name string) error {
 	return nil
 }
 
-func main() {
-	var input string
+func hostCreate(input string) {
+	name := strings.Replace(input, "create", "", 1)
+	name = strings.TrimSpace(name)
 
+	err := createHost(name)
+	if err != nil {
+		log.Fatal(err)
+	}
+}
+
+func hostDelete(input string) {
+	name := strings.Replace(input, "delete", "", 1)
+	name = strings.TrimSpace(name)
+	serverPath := pathVarWWW + strings.ReplaceAll(name, ".", "")
+	hosts, err := goodhosts.NewHosts()
+	if err != nil {
+		log.Fatal(err)
+	}
+	fmt.Printf("Destroying host %q", name)
+	out, err := exec.Command("a2dissite", name).CombinedOutput()
+	if err != nil {
+		log.Fatal(err)
+	}
+	fmt.Printf("%s", out)
+	if err = os.Remove(pathApacheSitesAvailable + name + ".conf"); err != nil {
+		log.Fatal("rm conf:", err)
+	}
+	if err = os.Remove(serverPath); err != nil {
+		log.Fatal("rm folder:", err)
+	}
+
+	if err = hosts.Remove(defaultLocalhostIPv4, name); err != nil {
+		log.Fatal(err)
+	}
+	if err := hosts.Flush(); err != nil {
+		log.Fatal(err)
+	}
+	out, err = exec.Command(pathInitdApache2, "restart").CombinedOutput()
+	if err != nil {
+		log.Fatal("apache: ", err)
+	}
+	fmt.Printf("%s", out)
+	fmt.Printf("Host %q destroyed\n", name)
+}
+
+func hostList() {
+	arr, err := findHosts()
+	if err != nil {
+		log.Fatal(err)
+	}
+	for _, value := range arr {
+		url := filepath.Base(value)
+		url = strings.Replace(url, ".conf", "", 1)
+		fmt.Println("Host: http://" + url + ", config file => " + value)
+	}
+}
+
+func main() {
 	fmt.Println("If you want to create, virtual host write create and url\nIf you want to delete virtual host write delete and url\nIf you want to list virtual host write list")
 	in := bufio.NewReader(os.Stdin)
-	input, _ = in.ReadString('\n')
+	input, err := in.ReadString('\n')
+	if err != nil {
+		log.Fatal(err)
+	}
 	input = strings.TrimSpace(input)
 
 	switch {
 	case input == "list":
-		arr, err := findHosts()
-		if err != nil {
-			panic(err)
-		}
-		for _, value := range arr {
-			url := filepath.Base(value)
-			url = strings.Replace(url, ".conf", "", 1)
-			fmt.Println("Host: http://" + url + ", config file => " + value)
-		}
-
+		hostList()
 	case strings.Contains(input, "create"):
-		name := strings.Replace(input, "create", "", 1)
-		name = strings.TrimSpace(name)
-
-		err := createHost(name)
-		if err != nil {
-			panic(err)
-		}
-
+		hostCreate(input)
 	case strings.Contains(input, "delete"):
-		name := strings.Replace(input, "delete", "", 1)
-		name = strings.TrimSpace(name)
-		serverPath := "/var/www/" + strings.ReplaceAll(name, ".", "")
-		hosts, err := goodhosts.NewHosts()
-		if err != nil {
-			panic(err)
-		}
-		fmt.Println("Destroy host... " + name)
-		out, err := exec.Command("a2dissite", name).CombinedOutput()
-		if err != nil {
-			panic(err)
-		}
-		fmt.Printf("%s", out)
-		err = os.Remove("/etc/apache2/sites-available/" + name + ".conf")
-		//exec.Command("rm", "/etc/apache2/sites-available" + name + ".conf").CombinedOutput()
-		if err != nil {
-			fmt.Println("rm conf")
-			panic(err)
-		}
-		err = os.Remove(serverPath)
-		if err != nil {
-			fmt.Println("rm folder")
-			panic(err)
-		}
-
-		err = hosts.Remove("127.0.0.1", name)
-		if err != nil {
-			panic(err)
-		}
-		if err := hosts.Flush(); err != nil {
-			panic(err)
-		}
-		out, err = exec.Command("/etc/init.d/apache2", "restart").CombinedOutput()
-		if err != nil {
-			fmt.Println("apache :(")
-			panic(err)
-		}
-		fmt.Printf("%s", out)
-		fmt.Println("Host is destroyed")
+		hostDelete(input)
 	}
 }
