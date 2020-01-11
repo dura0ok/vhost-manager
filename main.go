@@ -12,7 +12,7 @@ import (
 	"path/filepath"
 	"strings"
 )
-
+// FindHosts return slice with path to virtual hosts configs
 func findHosts() ([]string, error) {
 	var files []string
 	root := "/etc/apache2/sites-available/"
@@ -30,6 +30,7 @@ func findHosts() ([]string, error) {
 	return files, nil
 }
 
+// hostExists return bool if host already create, and error if programme cant run findHosts()
 func hostExists(name string) (bool, error) {
 	checkHost := "/etc/apache2/sites-available/" + name + ".conf"
 	configs, err := findHosts()
@@ -40,6 +41,7 @@ func hostExists(name string) (bool, error) {
 	return found, nil
 }
 
+// Find true if val in slice, use in hostExists
 func Find(slice []string, val string) (int, bool) {
 	for i, item := range slice {
 		if item == val {
@@ -48,7 +50,7 @@ func Find(slice []string, val string) (int, bool) {
 	}
 	return -1, false
 }
-
+// createHost(function wrapper, which create host)
 func createHost(name string) error {
 	check, err := hostExists(name)
 	if err != nil {
@@ -87,7 +89,7 @@ func createHost(name string) error {
 	out, err := exec.Command("a2ensite", name).CombinedOutput()
 	if err != nil {
 		return err
-	} else {
+	} 
 		/*
 			f, err = os.OpenFile("/etc/hosts",
 				os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
@@ -115,7 +117,7 @@ func createHost(name string) error {
 				return err
 			}
 		}
-	}
+	
 	fmt.Printf("%s", out)
 
 	out, err = exec.Command("/etc/init.d/apache2", "restart").CombinedOutput()
