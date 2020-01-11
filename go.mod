@@ -1,4 +1,4 @@
-module awesomeProject
+module vhost-manager
 
 go 1.13
 
