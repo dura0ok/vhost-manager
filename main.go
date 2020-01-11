@@ -79,36 +79,35 @@ func createHost(name string) error {
 	if err != nil {
 		return err
 	}
-	err = os.Mkdir(serverPath, 777)
+	err = os.Mkdir(serverPath, 0777)
 	if err != nil {
 		return err
 	}
-
 
 	out, err := exec.Command("a2ensite", name).CombinedOutput()
 	if err != nil {
 		return err
 	} else {
 		/*
-		f, err = os.OpenFile("/etc/hosts",
-			os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
-		if err != nil {
-			return err
-		}
+			f, err = os.OpenFile("/etc/hosts",
+				os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+			if err != nil {
+				return err
+			}
 
-		if _, err := f.WriteString("127.0.0.1       " + name); err != nil {
-			log.Println(err)
-		}
+			if _, err := f.WriteString("127.0.0.1       " + name); err != nil {
+				log.Println(err)
+			}
 
-		err = f.Close()
-		if err != nil {
-			return err
-		}
+			err = f.Close()
+			if err != nil {
+				return err
+			}
 		*/
 		hosts, _ := goodhosts.NewHosts()
 		if !hosts.Has("127.0.0.1", name) {
 			err = hosts.Add("127.0.0.1", name)
-			if err != nil{
+			if err != nil {
 				return err
 			}
 
@@ -142,12 +141,12 @@ func main() {
 		if err != nil {
 			panic(err)
 		}
-		for _, value := range arr{
+		for _, value := range arr {
 			url := filepath.Base(value)
 			url = strings.Replace(url, ".conf", "", 1)
 			fmt.Println("Host: http://" + url + ", config file => " + value)
 		}
-		break
+
 	case strings.Contains(input, "create"):
 		name := strings.Replace(input, "create", "", 1)
 		name = strings.TrimSpace(name)
@@ -156,35 +155,35 @@ func main() {
 		if err != nil {
 			panic(err)
 		}
-		break
+
 	case strings.Contains(input, "delete"):
 		name := strings.Replace(input, "delete", "", 1)
 		name = strings.TrimSpace(name)
 		serverPath := "/var/www/" + strings.ReplaceAll(name, ".", "")
 		hosts, err := goodhosts.NewHosts()
-		if err != nil{
+		if err != nil {
 			panic(err)
 		}
 		fmt.Println("Destroy host... " + name)
 		out, err := exec.Command("a2dissite", name).CombinedOutput()
-		if err != nil{
+		if err != nil {
 			panic(err)
 		}
 		fmt.Printf("%s", out)
 		err = os.Remove("/etc/apache2/sites-available/" + name + ".conf")
 		//exec.Command("rm", "/etc/apache2/sites-available" + name + ".conf").CombinedOutput()
-		if err != nil{
+		if err != nil {
 			fmt.Println("rm conf")
 			panic(err)
 		}
 		err = os.Remove(serverPath)
-		if err != nil{
+		if err != nil {
 			fmt.Println("rm folder")
 			panic(err)
 		}
 
 		err = hosts.Remove("127.0.0.1", name)
-		if err != nil{
+		if err != nil {
 			panic(err)
 		}
 		if err := hosts.Flush(); err != nil {
@@ -197,6 +196,5 @@ func main() {
 		}
 		fmt.Printf("%s", out)
 		fmt.Println("Host is destroyed")
-		break
 	}
 }
