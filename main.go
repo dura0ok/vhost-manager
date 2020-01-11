@@ -1,18 +1,20 @@
 package main
 
 import (
-	"bufio"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/lextoumbourou/goodhosts"
 	"io/ioutil"
 	"log"
+	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
-
-	"github.com/lextoumbourou/goodhosts"
 )
+
+type Hosts map[string]string
 
 const (
 	pathApacheSitesAvailable = "/etc/apache2/sites-available/"
@@ -24,9 +26,23 @@ const (
 	defaultLocalhostIPv4     = "127.0.0.1"
 )
 
-// findHosts returns the paths to virtual hosts configs
-func findHosts() ([]string, error) {
-	var files []string
+type ListResponse struct {
+	Hosts `json:"hosts"`
+	Error string `json:"error"`
+}
+
+type HostResponse struct {
+	Data string `json:"data"`
+	Error string `json:"error"`
+}
+
+type Request struct {
+	Name string `json:"name"`
+}
+
+
+func findHosts() (Hosts, error) {
+	hosts := Hosts{}
 	if err := filepath.Walk(
 		pathApacheSitesAvailable,
 		func(path string, info os.FileInfo, err error) error {
@@ -35,14 +51,30 @@ func findHosts() ([]string, error) {
 				info.Name() == defaultApacheSSLConf {
 				return nil
 			}
-			files = append(files, path)
+
+			url := filepath.Base(path)
+			url = strings.Replace(url, ".conf", "", 1)
+			hosts[url] = path
 			return nil
 		},
 	); err != nil {
 		return nil, err
 	}
 
-	return files, nil
+	return hosts, nil
+}
+
+func findConfigs() ([]string, error){
+	var config []string
+	hosts, err := findHosts()
+	if err != nil{
+		return nil, err
+	}
+
+	for _, value := range hosts{
+		config = append(config, value)
+	}
+	return config, nil
 }
 
 // hostExists returns true if the host was already created
@@ -51,7 +83,7 @@ func hostExists(name string) (bool, error) {
 		return false, errors.New("invalid host name (empty)")
 	}
 	path := pathApacheSitesAvailable + name + ".conf"
-	configs, err := findHosts()
+	configs, err := findConfigs()
 	if err != nil {
 		return false, err
 	}
@@ -68,20 +100,57 @@ func IndexOf(slice []string, val string) int {
 	}
 	return -1
 }
+//delete host
+func deleteHost(input string) (string, error) {
+	textLog := ""
+	name := strings.Replace(input, "delete", "", 1)
+	name = strings.TrimSpace(name)
+	serverPath := pathVarWWW + strings.ReplaceAll(name, ".", "")
+	hosts, err := goodhosts.NewHosts()
+	if err != nil {
+		return "", err
+	}
+	fmt.Printf("Destroying host %q", name)
+	out, _ := exec.Command("a2dissite", name).CombinedOutput()
+
+	textLog = textLog + "\n" + string(out)
+	if err = os.Remove(pathApacheSitesAvailable + name + ".conf"); err != nil {
+		return "", err
+	}
+	if err = os.Remove(serverPath); err != nil {
+		return "", err
+	}
+
+	if err = hosts.Remove(defaultLocalhostIPv4, name); err != nil {
+		return "", err
+	}
+	if err := hosts.Flush(); err != nil {
+		return "", err
+	}
+	out, err = exec.Command(pathInitdApache2, "restart").CombinedOutput()
+	if err != nil {
+		return "", err
+	}
+	textLog = textLog + "\n" + string(out)
+	textLog = textLog + "\n" + "Host destroyed " + name
+	return textLog, nil
+}
+
 
 // createHost creates a new host
-func createHost(name string) error {
+func createHost(name string) (string, error){
 	check, err := hostExists(name)
 	if err != nil {
-		return err
+		return "", err
 	}
 	if check {
-		return fmt.Errorf("host %q already exists", name)
+		return "", errors.New("this host already exist")
 	}
+	textLog := ""
 	serverPath := pathVarWWW + strings.ReplaceAll(name, ".", "")
 	b, err := ioutil.ReadFile(defaultTemplate)
 	if err != nil {
-		return err
+		return "", err
 	}
 	template := string(b)
 	template = strings.ReplaceAll(template, "{{servername}}", name)
@@ -90,120 +159,131 @@ func createHost(name string) error {
 	pathToFile := pathApacheSitesAvailable + name + ".conf"
 	f, err := os.Create(pathToFile)
 	if err != nil {
-		return err
+		return "", err
 	}
-	defer f.Close()
+	err = f.Close()
+	if err != nil {
+		return "", err
+	}
 
 	if err = ioutil.WriteFile(pathToFile, []byte(template), 0644); err != nil {
-		return err
+		return "", err
 	}
 	if err = os.Mkdir(serverPath, 0777); err != nil {
-		return err
+		return "", err
 	}
 
 	out, err := exec.Command("a2ensite", name).CombinedOutput()
 	if err != nil {
-		return err
+		return "", err
 	}
 
 	hosts, err := goodhosts.NewHosts()
 	if err != nil {
-		return err
+		return "", err
 	}
 
 	if !hosts.Has(defaultLocalhostIPv4, name) {
 		if err = hosts.Add(defaultLocalhostIPv4, name); err != nil {
-			return err
+			return "", err
 		}
 
 		if err := hosts.Flush(); err != nil {
-			return err
+			return "", err
 		}
 	}
 
-	fmt.Printf("%s", out)
+	textLog = textLog + "\n" + string(out)
 
 	out, err = exec.Command(pathInitdApache2, "restart").CombinedOutput()
 	if err != nil {
-		log.Fatal(err)
+		return "", err
 	}
-	fmt.Printf("%s", out)
+	textLog = textLog + "\n" + string(out)
 
-	return nil
+	return textLog, nil
 }
 
-func hostCreate(input string) {
-	name := strings.Replace(input, "create", "", 1)
-	name = strings.TrimSpace(name)
+func getHosts(w http.ResponseWriter, _ *http.Request) {
 
-	err := createHost(name)
+	hosts, err := findHosts()
+	rawResponse := ListResponse{
+		Hosts: hosts,
+	}
 	if err != nil {
-		log.Fatal(err)
+		rawResponse.Error = err.Error()
+	}
+	resp, err := json.Marshal(rawResponse)
+	if err != nil {
+		panic(err)
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	_, _ = w.Write(resp)
+}
+
+func deleteHostHandler(w http.ResponseWriter, r *http.Request){
+	if r.Method == "POST" {
+		decoder := json.NewDecoder(r.Body)
+		var request Request
+		err := decoder.Decode(&request)
+		if err != nil {
+			panic(err)
+		}
+		log.Println(request.Name)
+		textLog, err := deleteHost(request.Name)
+		rawResponse := HostResponse{}
+		if err != nil{
+			rawResponse.Error = err.Error()
+		}else{
+			rawResponse.Data = textLog
+		}
+		resp, err := json.Marshal(rawResponse)
+		if err != nil {
+			panic(err)
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write(resp)
+	} else {
+		http.Error(w, "Invalid request method", http.StatusMethodNotAllowed)
 	}
 }
 
-func hostDelete(input string) {
-	name := strings.Replace(input, "delete", "", 1)
-	name = strings.TrimSpace(name)
-	serverPath := pathVarWWW + strings.ReplaceAll(name, ".", "")
-	hosts, err := goodhosts.NewHosts()
-	if err != nil {
-		log.Fatal(err)
-	}
-	fmt.Printf("Destroying host %q", name)
-	out, err := exec.Command("a2dissite", name).CombinedOutput()
-	if err != nil {
-		log.Fatal(err)
-	}
-	fmt.Printf("%s", out)
-	if err = os.Remove(pathApacheSitesAvailable + name + ".conf"); err != nil {
-		log.Fatal("rm conf:", err)
-	}
-	if err = os.Remove(serverPath); err != nil {
-		log.Fatal("rm folder:", err)
-	}
+func createHostHandler(w http.ResponseWriter, r *http.Request){
 
-	if err = hosts.Remove(defaultLocalhostIPv4, name); err != nil {
-		log.Fatal(err)
-	}
-	if err := hosts.Flush(); err != nil {
-		log.Fatal(err)
-	}
-	out, err = exec.Command(pathInitdApache2, "restart").CombinedOutput()
-	if err != nil {
-		log.Fatal("apache: ", err)
-	}
-	fmt.Printf("%s", out)
-	fmt.Printf("Host %q destroyed\n", name)
-}
+	if r.Method == "POST" {
+		decoder := json.NewDecoder(r.Body)
+		var request Request
+		err := decoder.Decode(&request)
+		if err != nil {
+			panic(err)
+		}
+		log.Println(request.Name)
+		textLog, err := createHost(request.Name)
+		rawResponse := HostResponse{}
+		if err != nil{
+			rawResponse.Error = err.Error()
+		}else{
+			rawResponse.Data = textLog
+		}
+		resp, err := json.Marshal(rawResponse)
+		if err != nil {
+			panic(err)
+		}
 
-func hostList() {
-	arr, err := findHosts()
-	if err != nil {
-		log.Fatal(err)
-	}
-	for _, value := range arr {
-		url := filepath.Base(value)
-		url = strings.Replace(url, ".conf", "", 1)
-		fmt.Println("Host: http://" + url + ", config file => " + value)
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write(resp)
+	} else {
+		http.Error(w, "Invalid request method", http.StatusMethodNotAllowed)
 	}
 }
 
 func main() {
-	fmt.Println("If you want to create, virtual host write create and url\nIf you want to delete virtual host write delete and url\nIf you want to list virtual host write list")
-	in := bufio.NewReader(os.Stdin)
-	input, err := in.ReadString('\n')
-	if err != nil {
-		log.Fatal(err)
-	}
-	input = strings.TrimSpace(input)
-
-	switch {
-	case input == "list":
-		hostList()
-	case strings.Contains(input, "create"):
-		hostCreate(input)
-	case strings.Contains(input, "delete"):
-		hostDelete(input)
+	http.HandleFunc("/api/list", getHosts)
+	http.HandleFunc("/api/create", createHostHandler)
+	http.HandleFunc("/api/delete", deleteHostHandler)
+	if err := http.ListenAndServe(":8080", nil); err != nil {
+		panic(err)
 	}
 }
