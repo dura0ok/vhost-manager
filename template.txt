@@ -1,0 +1,18 @@
+
+		<VirtualHost *:80>
+			ServerAdmin webmaster@localhost
+			ServerName {{servername}}
+			ServerAlias {{servername}}
+			DocumentRoot {{serverpath}}
+			<Directory />
+				AllowOverride All
+			</Directory>
+			<Directory {{serverpath}}>
+				Options Indexes FollowSymLinks MultiViews
+				AllowOverride all
+				Require all granted
+			</Directory>
+			ErrorLog /var/log/apache2/{{servername}}-error.log
+			LogLevel error
+			CustomLog /var/log/apache2/{{servername}}-access.log combined
+		</VirtualHost>
