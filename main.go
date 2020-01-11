@@ -13,7 +13,7 @@ import (
 	"path/filepath"
 	"strings"
 )
-// hosts map key is url, string path to config
+// Hosts map key is url, string path to config
 type Hosts map[string]string
 
 const (
@@ -26,13 +26,13 @@ const (
 	defaultLocalhostIPv4     = "127.0.0.1"
 )
 
-// listResponse struct which allow response array of hosts /api/list
+// ListResponse struct which allow response array of hosts /api/list
 type ListResponse struct {
 	Hosts `json:"hosts"`
 	Error string `json:"error"`
 }
 
-// listResponse struct which allow response error or log create/delete host
+// HostResponse struct which allow response error or log create/delete host
 type HostResponse struct {
 	Data string `json:"data"`
 	Error string `json:"error"`
