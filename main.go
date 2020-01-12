@@ -3,7 +3,7 @@ package main
 import (
 	"encoding/json"
 	"errors"
-	"fmt"
+	"fmt"  
 	"github.com/lextoumbourou/goodhosts"
 	"io/ioutil"
 	"log"
@@ -253,6 +253,32 @@ func deleteHostHandler(w http.ResponseWriter, r *http.Request){
 	}
 }
 
+func getStatus(w http.ResponseWriter, r *http.Request){
+	resp := make(map[string]string)
+	out, err := exec.Command("service", "apache2", "status").CombinedOutput()
+	if err != nil{
+		panic(err)
+	}
+	if strings.Contains(string(out), "Started"){
+		resp["status"] = "active"
+	}else if  strings.Contains(string(out), "Stopped"){
+		resp["status"] = "active"
+	}else{
+		resp["status"] = "restarting"
+	}
+
+	fmt.Println(resp)
+	data, err := json.Marshal(resp)
+	fmt.Println(data)
+	if err != nil {
+		fmt.Println("err")
+		panic(err)
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	_, _ = w.Write(data)
+}
+
 func createHostHandler(w http.ResponseWriter, r *http.Request){
 
 	if r.Method == "POST" {
@@ -284,6 +310,7 @@ func createHostHandler(w http.ResponseWriter, r *http.Request){
 
 func main() {
 	http.HandleFunc("/api/list", getHosts)
+	http.HandleFunc("/api/status", getStatus)
 	http.HandleFunc("/api/create", createHostHandler)
 	http.HandleFunc("/api/delete", deleteHostHandler)
 	if err := http.ListenAndServe(":8080", nil); err != nil {
