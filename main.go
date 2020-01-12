@@ -3,7 +3,7 @@ package main
 import (
 	"encoding/json"
 	"errors"
-	"fmt"  
+	"fmt"
 	"github.com/lextoumbourou/goodhosts"
 	"io/ioutil"
 	"log"
@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"strings"
 )
+
 // Hosts map key is url, string path to config
 type Hosts map[string]string
 
@@ -34,7 +35,7 @@ type ListResponse struct {
 
 // HostResponse struct which allow response error or log create/delete host
 type HostResponse struct {
-	Data string `json:"data"`
+	Data  string `json:"data"`
 	Error string `json:"error"`
 }
 
@@ -42,7 +43,6 @@ type HostResponse struct {
 type Request struct {
 	Name string `json:"name"`
 }
-
 
 func findHosts() (Hosts, error) {
 	hosts := Hosts{}
@@ -67,14 +67,14 @@ func findHosts() (Hosts, error) {
 	return hosts, nil
 }
 
-func findConfigs() ([]string, error){
+func findConfigs() ([]string, error) {
 	var config []string
 	hosts, err := findHosts()
-	if err != nil{
+	if err != nil {
 		return nil, err
 	}
 
-	for _, value := range hosts{
+	for _, value := range hosts {
 		config = append(config, value)
 	}
 	return config, nil
@@ -103,6 +103,7 @@ func IndexOf(slice []string, val string) int {
 	}
 	return -1
 }
+
 //delete host
 func deleteHost(input string) (string, error) {
 	textLog := ""
@@ -139,9 +140,8 @@ func deleteHost(input string) (string, error) {
 	return textLog, nil
 }
 
-
 // createHost creates a new host
-func createHost(name string) (string, error){
+func createHost(name string) (string, error) {
 	check, err := hostExists(name)
 	if err != nil {
 		return "", err
@@ -225,7 +225,7 @@ func getHosts(w http.ResponseWriter, _ *http.Request) {
 	_, _ = w.Write(resp)
 }
 
-func deleteHostHandler(w http.ResponseWriter, r *http.Request){
+func deleteHostHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method == "POST" {
 		decoder := json.NewDecoder(r.Body)
 		var request Request
@@ -236,9 +236,9 @@ func deleteHostHandler(w http.ResponseWriter, r *http.Request){
 		log.Println(request.Name)
 		textLog, err := deleteHost(request.Name)
 		rawResponse := HostResponse{}
-		if err != nil{
+		if err != nil {
 			rawResponse.Error = err.Error()
-		}else{
+		} else {
 			rawResponse.Data = textLog
 		}
 		resp, err := json.Marshal(rawResponse)
@@ -253,18 +253,17 @@ func deleteHostHandler(w http.ResponseWriter, r *http.Request){
 	}
 }
 
-func getStatus(w http.ResponseWriter, r *http.Request){
+func getStatus(w http.ResponseWriter, r *http.Request) {
 	resp := make(map[string]string)
-	out, err := exec.Command("service", "apache2", "status").CombinedOutput()
-	if err != nil{
-		panic(err)
+	// systemctl is-enabled apache2
+	out, err := exec.Command("systemctl", "is-enabled", "apache2").CombinedOutput()
+	if err != nil {
+		fmt.Println(err.Error())
 	}
-	if strings.Contains(string(out), "Started"){
+	if strings.Contains(string(out), "enabled") {
 		resp["status"] = "active"
-	}else if  strings.Contains(string(out), "Stopped"){
-		resp["status"] = "active"
-	}else{
-		resp["status"] = "restarting"
+	} else {
+		resp["status"] = "stopped"
 	}
 
 	fmt.Println(resp)
@@ -279,7 +278,7 @@ func getStatus(w http.ResponseWriter, r *http.Request){
 	_, _ = w.Write(data)
 }
 
-func createHostHandler(w http.ResponseWriter, r *http.Request){
+func createHostHandler(w http.ResponseWriter, r *http.Request) {
 
 	if r.Method == "POST" {
 		decoder := json.NewDecoder(r.Body)
@@ -291,9 +290,9 @@ func createHostHandler(w http.ResponseWriter, r *http.Request){
 		log.Println(request.Name)
 		textLog, err := createHost(request.Name)
 		rawResponse := HostResponse{}
-		if err != nil{
+		if err != nil {
 			rawResponse.Error = err.Error()
-		}else{
+		} else {
 			rawResponse.Data = textLog
 		}
 		resp, err := json.Marshal(rawResponse)
