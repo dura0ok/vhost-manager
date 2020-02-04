@@ -15,3 +15,5 @@
 ### Manager will be work by web application(Vue JS)
 
 #### Run with command sudo sh run.sh $USER
+
+##### Special thanks Kazbek Brtsiev(Frontend Developer) [click](https://github.com/brtsiev-kazbek)
