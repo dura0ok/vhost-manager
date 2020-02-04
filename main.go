@@ -15,7 +15,7 @@ import (
 )
 
 // Hosts map key is url, string path to config
-type Hosts map[string]string
+type Hosts []map[string]string
 
 const (
 	pathApacheSitesAvailable = "/etc/apache2/sites-available/"
@@ -57,7 +57,10 @@ func findHosts() (Hosts, error) {
 
 			url := filepath.Base(path)
 			url = strings.Replace(url, ".conf", "", 1)
-			hosts[url] = path
+			hosts = append(
+				hosts,
+				map[string]string{"url": url, "path": path},
+			)
 			return nil
 		},
 	); err != nil {
@@ -75,7 +78,7 @@ func findConfigs() ([]string, error) {
 	}
 
 	for _, value := range hosts {
-		config = append(config, value)
+		config = append(config, value["path"])
 	}
 	return config, nil
 }
@@ -210,18 +213,16 @@ func createHost(name string) (string, error) {
 func getHosts(w http.ResponseWriter, _ *http.Request) {
 
 	hosts, err := findHosts()
-	rawResponse := ListResponse{
-		Hosts: hosts,
-	}
-	if err != nil {
-		rawResponse.Error = err.Error()
-	}
-	resp, err := json.Marshal(rawResponse)
+	resp, err := json.Marshal(hosts)
 	if err != nil {
 		panic(err)
 	}
 
 	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Access-Control-Allow-Methods", "POST,GET")
+	w.Header().Set("Access-Control-Allow-Headers", "*")
+	w.Header().Set("Access-Control-Allow-Credentials", "true")
 	_, _ = w.Write(resp)
 }
 
@@ -247,6 +248,10 @@ func deleteHostHandler(w http.ResponseWriter, r *http.Request) {
 		}
 
 		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.Header().Set("Access-Control-Allow-Methods", "POST,GET")
+		w.Header().Set("Access-Control-Allow-Headers", "*")
+		w.Header().Set("Access-Control-Allow-Credentials", "true")
 		_, _ = w.Write(resp)
 	} else {
 		http.Error(w, "Invalid request method", http.StatusMethodNotAllowed)
@@ -266,15 +271,19 @@ func getStatus(w http.ResponseWriter, r *http.Request) {
 		resp["status"] = "stopped"
 	}
 
-	fmt.Println(resp)
+	//fmt.Println(resp)
 	data, err := json.Marshal(resp)
-	fmt.Println(data)
+	//fmt.Println(data)
 	if err != nil {
 		fmt.Println("err")
 		panic(err)
 	}
 
 	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Access-Control-Allow-Methods", "POST,GET")
+	w.Header().Set("Access-Control-Allow-Headers", "*")
+	w.Header().Set("Access-Control-Allow-Credentials", "true")
 	_, _ = w.Write(data)
 }
 
@@ -301,6 +310,10 @@ func createHostHandler(w http.ResponseWriter, r *http.Request) {
 		}
 
 		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.Header().Set("Access-Control-Allow-Methods", "POST,GET")
+		w.Header().Set("Access-Control-Allow-Headers", "*")
+		w.Header().Set("Access-Control-Allow-Credentials", "true")
 		_, _ = w.Write(resp)
 	} else {
 		http.Error(w, "Invalid request method", http.StatusMethodNotAllowed)
