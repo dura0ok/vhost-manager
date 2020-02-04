@@ -26,6 +26,7 @@ const (
 	defaultApacheSSLConf     = "default-ssl.conf"
 	defaultTemplate          = "template.txt"
 	defaultLocalhostIPv4     = "127.0.0.1"
+	defaultPort              = ":8080"
 )
 
 // HostResponse struct which allow response error or log create/delete host
@@ -319,11 +320,16 @@ func createHostHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func main() {
+	fmt.Println("Starting server..")
 	http.HandleFunc("/api/list", getHosts)
 	http.HandleFunc("/api/status", getStatus)
 	http.HandleFunc("/api/create", createHostHandler)
 	http.HandleFunc("/api/delete", deleteHostHandler)
-	if err := http.ListenAndServe(":8080", nil); err != nil {
+
+	if err := http.ListenAndServe(defaultPort, nil); err != nil {
 		panic(err)
 	}
+
+	// Lets run frontent part
+
 }
