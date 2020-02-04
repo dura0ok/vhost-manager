@@ -14,4 +14,4 @@
 
 ### Manager will be work by web application(Vue JS)
 
-#### Run with command sudo sh run.sh
+#### Run with command sudo sh run.sh $USER
