@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/lextoumbourou/goodhosts"
 	"io/ioutil"
 	"log"
 	"net/http"
@@ -12,6 +11,8 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+
+	"github.com/lextoumbourou/goodhosts"
 )
 
 // Hosts map key is url, string path to config
@@ -26,12 +27,6 @@ const (
 	defaultTemplate          = "template.txt"
 	defaultLocalhostIPv4     = "127.0.0.1"
 )
-
-// ListResponse struct which allow response array of hosts /api/list
-type ListResponse struct {
-	Hosts `json:"hosts"`
-	Error string `json:"error"`
-}
 
 // HostResponse struct which allow response error or log create/delete host
 type HostResponse struct {
@@ -213,6 +208,9 @@ func createHost(name string) (string, error) {
 func getHosts(w http.ResponseWriter, _ *http.Request) {
 
 	hosts, err := findHosts()
+	if err != nil {
+		panic(err)
+	}
 	resp, err := json.Marshal(hosts)
 	if err != nil {
 		panic(err)
